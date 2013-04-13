@@ -98,7 +98,8 @@ void showBoard(){
 
 }
 
-void processInput() {
+bool processInput() {
+  bool ret = false;
   STATUS n = current;
   if (GetAsyncKeyState(VK_LEFT)) {
     n.x--;
@@ -107,7 +108,7 @@ void processInput() {
   } else if (GetAsyncKeyState(VK_UP)) {
     n.rotate++;
   } else if (GetAsyncKeyState(VK_DOWN)) {
-    n.y--;
+    ret = true;
   }
   
   if(n.x != current.x || n.y != current.y || n.rotate != current.rotate) {
@@ -118,6 +119,7 @@ void processInput() {
       putBlock(current);
     }
   }
+  return ret;
 }
 
 void gameOver() {
@@ -132,12 +134,33 @@ void gameOver() {
   InvalidateRect(hMainWindow, NULL, false);
 }
 
+void deleteLine() {
+  for (int y = 1; y < 25; y++) {
+    bool flag = true;
+    for (int x = 1; x <= 10; x++) {
+      if (board[x][y] == 0) {
+        flag = false;
+      }
+    }
+    if (flag) {
+      for (int j = y; j < 24; j++) {
+        for (int i = 1; i <= 10; i++) {
+          board[i][j] = board[i][j + 1];
+        }
+      }
+      y--;
+    }
+  }
+}
+
 void blockDown(){
   deleteBlock(current);
   current.y--;
   if(!putBlock(current)) {
     current.y++;
     putBlock(current);
+
+    deleteLine();
 
     // new block
     current.x = 5;
@@ -169,7 +192,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     current.type = random(7)+1;
     current.rotate = random(4);
     putBlock(current);
-        
+    
     HDC hdc = GetDC(hWnd);
 
     hMemDC = CreateCompatibleDC(hdc);
@@ -187,8 +210,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     break;
   }
   case WM_TIMER: {
-    processInput();
-    blockDown();
+    static int w = 0;
+    bool keyInput = false;
+    if (w % 2 == 0) {
+      if(processInput()) {
+        w = 0;
+      }
+    }
+    if (w % 5 == 0) {
+      blockDown();
+    }
+    w++;
     InvalidateRect(hWnd, NULL, false);
     break;
   }
