@@ -11,6 +11,84 @@ HBITMAP hMemPrev, hBlockPrev;
 
 int board[12][25];
 
+typedef struct _TAG_POSITION {
+  int x;
+  int y;
+} POSITION;
+
+typedef struct _TAG_BLOCK {
+  int rotate;
+  POSITION p[3];
+} BLOCK;
+
+BLOCK block[8] = {
+  {1, {{0, 0}, {0, 0}, {0, 0}}}, // null
+  {2, {{0, -1}, {0, 1}, {0, 2}}}, // tetris
+  {4, {{0, -1}, {0, 1}, {1, 1}}}, // L1
+  {4, {{0, -1}, {0, 1}, {-1, 1}}}, // L2
+  {2, {{0, -1}, {1, 0}, {1, 1}}}, // key1
+  {2, {{0, -1}, {-1, 0}, {-1, 1}}}, // key2
+  {1, {{0, 1}, {1, 0}, {1, 1}}}, // square
+  {4, {{0, -1}, {1, 0}, {-1, 0}}}, // t
+};
+
+typedef struct _TAG_STATUS {
+  int x;
+  int y;
+  int type;
+  int rotate;
+} STATUS;
+
+STATUS current;
+
+int random(int max) {
+  return (int) ((rand() / (RAND_MAX + 1.0) * max));
+}
+
+bool putBlock(STATUS s, bool action = false) {
+  if(board[s.x][s.y] != 0) {
+    return false;
+  }
+  if (action) {
+    board[s.x][s.y] = s.type;
+  }
+  for (int i = 0; i < 3; i++) {
+    int dx = block[s.type].p[i].x;
+    int dy = block[s.type].p[i].y;
+    int r = s.rotate % block[s.type].rotate;
+    for (int j = 0; j < r; j++) {
+      int nx = dx, ny = dy;
+      dx = ny; dy = -nx;
+    }
+    if (board[s.x + dx][s.y + dy] != 0){
+      return false;
+    }
+    if (action) {
+      board[s.x + dx][s.y + dy] = s.type;
+    }
+  }
+  if (!action) {
+    putBlock(s, true);
+  }
+  return true;
+}
+
+bool deleteBlock(STATUS s) {
+  board[s.x][s.y] = 0;
+  for (int i = 0; i < 3; i++) {
+    int dx = block[s.type].p[i].x;
+    int dy = block[s.type].p[i].y;
+    int r = s.rotate % block[s.type].rotate;
+    for (int j = 0; j < r; j++) {
+      int nx = dx, ny = dy;
+      dx = ny; dy = -nx;
+    }
+    board[s.x + dx][s.y + dy] = 0;
+  }
+  return true;
+}
+
+
 void showBoard(){
   for (int x = 1; x <= 10; x++){
     for(int y = 1; y < 25; y++){
@@ -19,6 +97,59 @@ void showBoard(){
   }
 
 }
+
+void processInput() {
+  STATUS n = current;
+  if (GetAsyncKeyState(VK_LEFT)) {
+    n.x--;
+  } else if (GetAsyncKeyState(VK_RIGHT)) {
+    n.x++;
+  } else if (GetAsyncKeyState(VK_UP)) {
+    n.rotate++;
+  } else if (GetAsyncKeyState(VK_DOWN)) {
+    n.y--;
+  }
+  
+  if(n.x != current.x || n.y != current.y || n.rotate != current.rotate) {
+    deleteBlock(current);
+    if(putBlock(n)){
+      current = n;
+    } else {
+      putBlock(current);
+    }
+  }
+}
+
+void gameOver() {
+  KillTimer(hMainWindow, 100);
+  for (int x = 1; x <= 10; x++) {
+    for (int y = 1; y < 20; y++) {
+      if(board[x][y] != 0) {
+        board[x][y] = 1;
+      }
+    }
+  }
+  InvalidateRect(hMainWindow, NULL, false);
+}
+
+void blockDown(){
+  deleteBlock(current);
+  current.y--;
+  if(!putBlock(current)) {
+    current.y++;
+    putBlock(current);
+
+    // new block
+    current.x = 5;
+    current.y = 21;
+    current.type = random(7) + 1;
+    current.rotate = random(4);
+    if (!putBlock(current)) {
+      gameOver();
+    }
+  }
+}
+
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   switch(msg) {
@@ -32,6 +163,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
       }
     }
+
+    current.x = 5;
+    current.y = 21;
+    current.type = random(7)+1;
+    current.rotate = random(4);
+    putBlock(current);
         
     HDC hdc = GetDC(hWnd);
 
@@ -44,16 +181,22 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     hBlockPrev = (HBITMAP)SelectObject(hBlockDC, hBitmap);
 
     // debug
-    BitBlt(hMemDC, 0, 0, 24, 24, hBlockDC, 0, 0, SRCCOPY);
+    //BitBlt(hMemDC, 0, 0, 24, 24, hBlockDC, 0, 0, SRCCOPY);
 
     ReleaseDC (hWnd, hdc);
+    break;
+  }
+  case WM_TIMER: {
+    processInput();
+    blockDown();
+    InvalidateRect(hWnd, NULL, false);
     break;
   }
   case WM_PAINT: {
     showBoard();
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(hWnd, &ps);
-    BitBlt(hdc, 0, 0, 24*10, 24*20, hMemDC, 0, 0, SRCCOPY);
+    BitBlt(hdc, 0, 0, 24 * 10, 24 * 20, hMemDC, 0, 0, SRCCOPY);
     EndPaint(hWnd, &ps);
     break;
   }
@@ -78,7 +221,7 @@ int WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR cmdLine, int cmdShow) {
   hInstance = hInst;
   
   WNDCLASSEX wc;
-  static LPSTR pClassName = "WinTetris";
+  static LPSTR pClassName = (LPSTR) "WinTetris";
   
   /* ウィンドウクラスを定義する */
   wc.hInstance = hInst;                   // このインスタンスへのハンドル
@@ -110,11 +253,14 @@ int WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR cmdLine, int cmdShow) {
                              r.right - r.left, r.bottom - r.top, NULL, NULL, hInst, NULL);
   ShowWindow(hMainWindow, SW_SHOW);
 
+  SetTimer(hMainWindow, 100, 1000/30, NULL);
+  
   MSG msg;
   while(GetMessage(&msg, NULL, 0, 0)) {
     TranslateMessage(&msg);
     DispatchMessage(&msg);
   }
+  KillTimer(hMainWindow, 100);
   
   return 0;
 }
